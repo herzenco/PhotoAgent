@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "photoagent"
+version = "0.1.0"
+description = "AI-powered local-first privacy-focused CLI image organizer"
+requires-python = ">=3.11"
+dependencies = [
+    "typer[all]",
+    "rich",
+    "Pillow",
+    "pillow-heif",
+    "exifread",
+    "reverse_geocoder",
+    "imagehash",
+    "scikit-image",
+    "anthropic",
+    "keyring",
+]
+
+[project.optional-dependencies]
+vision = [
+    "open-clip-torch",
+    "transformers",
+    "torch",
+    "insightface",
+    "onnxruntime",
+]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+all = [
+    "photoagent[vision,dev]",
+]
+
+[project.scripts]
+photoagent = "photoagent.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
