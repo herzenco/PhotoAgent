@@ -188,10 +188,20 @@ def extract_exif(file_path: Path) -> dict[str, Any]:
         return empty
 
     try:
-        with open(file_path, "rb") as fh:
-            tags = exifread.process_file(fh, details=False)
-    except Exception as exc:
-        logger.debug("Failed to read EXIF from %s: %s", file_path, exc)
+        import io
+        import sys
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            old_stderr = sys.stderr
+            sys.stderr = io.StringIO()  # suppress exifread print noise
+            try:
+                with open(file_path, "rb") as fh:
+                    tags = exifread.process_file(fh, details=False)
+            finally:
+                sys.stderr = old_stderr
+    except Exception:
         return empty
 
     if not tags:

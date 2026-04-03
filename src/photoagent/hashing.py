@@ -57,13 +57,13 @@ def _compute_phash(file_path: Path) -> str | None:
     if Image is None or imagehash is None:
         return None
     try:
-        with Image.open(file_path) as img:
-            phash = imagehash.phash(img)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with Image.open(file_path) as img:
+                phash = imagehash.phash(img)
         return str(phash)
-    except Exception as exc:
-        logger.debug(
-            "Failed to compute perceptual hash for %s: %s", file_path, exc
-        )
+    except Exception:
         return None
 
 

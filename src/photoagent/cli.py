@@ -336,3 +336,35 @@ def organize_template(
 
     yaml_path = Path(yaml_file) if yaml_file else None
     run_template_organize(path=path, template_name=template, yaml_path=yaml_path)
+
+
+# ------------------------------------------------------------------
+# Cloud vision commands
+# ------------------------------------------------------------------
+
+
+@app.command(name="cloud-analyze")
+def cloud_analyze_cmd(
+    path: Path = typer.Argument(..., help="Path to photo directory"),
+    limit: Optional[int] = typer.Option(None, "--limit", "-n", help="Max images to process"),
+    max_size: int = typer.Option(256, "--size", help="Thumbnail max dimension (px)"),
+    quality: int = typer.Option(65, "--quality", help="JPEG quality (1-100)"),
+    reanalyze: bool = typer.Option(False, "--reanalyze", help="Re-analyze already processed images"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show per-image details"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Estimate cost without calling API"),
+) -> None:
+    """Analyze photos using Claude Haiku vision (cloud API)."""
+    from photoagent.cloud.cli import cloud_analyze
+
+    cloud_analyze(str(path), limit, max_size, quality, reanalyze, verbose, dry_run)
+
+
+@app.command(name="cloud-search")
+def cloud_search_cmd(
+    path: Path = typer.Argument(..., help="Path to photo directory"),
+    query: str = typer.Argument(..., help="Search query"),
+) -> None:
+    """Search photos using cloud analysis tags."""
+    from photoagent.cloud.cli import cloud_search
+
+    cloud_search(str(path), query)
