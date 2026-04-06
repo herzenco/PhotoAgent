@@ -192,6 +192,55 @@ class TestIncrementalScan:
             db.close()
 
 
+class TestMacOSFiltering:
+    """Tests for macOS resource fork and metadata filtering."""
+
+    def test_scan_skips_macos_resource_forks(self, tmp_path: Path) -> None:
+        """._photo.jpg should be skipped, photo.jpg should be found."""
+        from PIL import Image
+
+        scan_dir = tmp_path / "scanme"
+        scan_dir.mkdir()
+
+        # Real image
+        img = Image.new("RGB", (10, 10), "red")
+        img.save(str(scan_dir / "photo.jpg"), "JPEG")
+
+        # macOS resource fork (same extension)
+        (scan_dir / "._photo.jpg").write_bytes(b"\x00" * 100)
+
+        scanner, db = _make_scanner(scan_dir, tmp_path)
+        try:
+            result = scanner.scan(db)
+            all_images = db.get_all_images()
+            filenames = [r["filename"] for r in all_images]
+            assert "photo.jpg" in filenames
+            assert "._photo.jpg" not in filenames
+            assert result.total_found == 1
+        finally:
+            db.close()
+
+    def test_scan_skips_ds_store(self, tmp_path: Path) -> None:
+        """.DS_Store should not be cataloged."""
+        from PIL import Image
+
+        scan_dir = tmp_path / "scanme"
+        scan_dir.mkdir()
+
+        img = Image.new("RGB", (10, 10), "blue")
+        img.save(str(scan_dir / "real.jpg"), "JPEG")
+        (scan_dir / ".DS_Store").write_bytes(b"\x00" * 50)
+
+        scanner, db = _make_scanner(scan_dir, tmp_path)
+        try:
+            result = scanner.scan(db)
+            all_images = db.get_all_images()
+            assert len(all_images) == 1
+            assert all_images[0]["filename"] == "real.jpg"
+        finally:
+            db.close()
+
+
 class TestScanProgress:
     """Tests for the optional on_progress parameter."""
 

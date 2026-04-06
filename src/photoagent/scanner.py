@@ -78,7 +78,14 @@ class FileScanner:
                     if entry.is_symlink():
                         continue
 
+                    # Skip macOS resource forks and metadata
+                    if entry.name.startswith("._") or entry.name == ".DS_Store":
+                        continue
+
                     if entry.is_dir(follow_symlinks=False):
+                        # Skip macOS archive junk directories
+                        if entry.name == "__MACOSX":
+                            continue
                         if self.recursive:
                             yield from self._iter_entries(Path(entry.path))
                     elif entry.is_file(follow_symlinks=False):

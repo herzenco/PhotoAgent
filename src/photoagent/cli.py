@@ -368,3 +368,16 @@ def cloud_search_cmd(
     from photoagent.cloud.cli import cloud_search
 
     cloud_search(str(path), query)
+
+
+@app.command(name="cloud-organize")
+def cloud_organize_cmd(
+    path: Path = typer.Argument(..., help="Path to photo directory"),
+    mapping: Optional[str] = typer.Option(None, "--mapping", "-m", help="Path to custom category→folder mapping JSON"),
+    copy: bool = typer.Option(False, "--copy", help="Copy files instead of moving (keep originals)"),
+    dry_run: bool = typer.Option(True, "--dry-run/--execute", help="Show plan without executing (default: dry-run)"),
+) -> None:
+    """Organize photos into folders based on cloud analysis categories."""
+    from photoagent.cloud.cli import cloud_organize
+
+    cloud_organize(str(path), mapping, copy, dry_run)

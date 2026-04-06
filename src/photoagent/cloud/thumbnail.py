@@ -42,6 +42,10 @@ def make_thumbnail(
     the file is unsupported or an error occurs. info_dict contains:
     original_width, original_height, thumb_width, thumb_height, thumb_byte_size.
     """
+    # Skip macOS resource forks (safety net if already in catalog)
+    if image_path.name.startswith("._"):
+        return None, None
+
     ext = Path(image_path).suffix.lower()
 
     if ext in _RAW_EXTENSIONS or ext not in _SUPPORTED_EXTENSIONS:

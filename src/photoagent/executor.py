@@ -38,6 +38,7 @@ class PlanExecutor:
         self,
         plan: dict[str, Any],
         on_progress: Callable[[int, int, str], None] | None = None,
+        copy_only: bool = False,
     ) -> ExecutionResult:
         """Execute an organization plan.
 
@@ -120,21 +121,24 @@ class PlanExecutor:
                         on_progress(idx + 1, len(moves), f"VERIFY FAIL {src_rel}")
                     continue
 
-                # 4g. Delete source only after verified copy
-                try:
-                    src.unlink()
-                except OSError as exc:
-                    # Copy succeeded but source delete failed -- non-fatal
-                    msg = f"Could not remove source {src_rel}: {exc}"
-                    logger.warning(msg)
-                    result.errors.append(msg)
+                # 4g. Delete source only after verified copy (skip if copy_only)
+                if not copy_only:
+                    try:
+                        src.unlink()
+                    except OSError as exc:
+                        # Copy succeeded but source delete failed -- non-fatal
+                        msg = f"Could not remove source {src_rel}: {exc}"
+                        logger.warning(msg)
+                        result.errors.append(msg)
 
-                # 4h. Update catalog DB
-                self._update_catalog_path(str(src), str(dst))
+                # 4h. Update catalog DB (only update path if we moved, not copied)
+                if not copy_only:
+                    self._update_catalog_path(str(src), str(dst))
 
                 result.successful += 1
                 if on_progress:
-                    status = "MOVE" if not conflict_resolved else "MOVE (conflict resolved)"
+                    verb = "COPY" if copy_only else "MOVE"
+                    status = verb if not conflict_resolved else f"{verb} (conflict resolved)"
                     on_progress(idx + 1, len(moves), f"{status} {src_rel}")
 
             except PermissionError as exc:

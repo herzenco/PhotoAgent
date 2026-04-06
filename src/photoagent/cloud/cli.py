@@ -298,3 +298,121 @@ def cloud_search(path: str, query: str) -> None:
 
     console.print(table)
     console.print(f"[dim]{len(results)} result(s) found.[/dim]")
+
+
+# ------------------------------------------------------------------
+# cloud-organize
+# ------------------------------------------------------------------
+
+
+def cloud_organize(
+    path: str,
+    mapping_path: str | None,
+    copy: bool,
+    dry_run: bool,
+) -> None:
+    """Organize photos into folders based on cloud analysis categories."""
+    db_path = store.get_db_path(path)
+    if not db_path.exists():
+        console.print(
+            f"[red]No catalog found at {path}. Run 'photoagent scan' first.[/red]"
+        )
+        return
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        store.ensure_table(conn)
+
+        # Load custom mapping if provided
+        mapping = None
+        if mapping_path:
+            from photoagent.cloud.organize import load_custom_mapping
+
+            mapping = load_custom_mapping(Path(mapping_path))
+
+        # Build the plan
+        from photoagent.cloud.organize import build_organize_plan
+
+        plan = build_organize_plan(conn, Path(path), mapping)
+    finally:
+        conn.close()
+
+    moves = plan.get("moves", [])
+    if not moves:
+        console.print(
+            "[dim]No files to organize. Run 'photoagent cloud-analyze' first.[/dim]"
+        )
+        return
+
+    # Display the plan
+    from photoagent.plan_display import display_plan, get_user_approval, export_plan
+
+    action = "copy" if copy else "move"
+    console.print(f"\n[bold]Mode:[/bold] {action} | [bold]Files:[/bold] {len(moves)}\n")
+    display_plan(plan)
+
+    if dry_run:
+        console.print(
+            "\n[yellow]Dry run — no files touched. Use --execute to apply.[/yellow]"
+        )
+        return
+
+    # Approval flow
+    choice = get_user_approval()
+
+    if choice == "reject":
+        console.print("[yellow]Cancelled.[/yellow]")
+        return
+
+    if choice == "export":
+        export_path = Path(path) / ".photoagent" / "cloud_organize_plan.json"
+        export_plan(plan, export_path)
+        return
+
+    if choice == "modify":
+        console.print(
+            "[yellow]Edit your mapping JSON and re-run.[/yellow]"
+        )
+        return
+
+    if choice == "approve":
+        _execute_cloud_plan(Path(path), plan, copy_only=copy)
+
+
+def _execute_cloud_plan(
+    base_path: Path,
+    plan: dict,
+    copy_only: bool = False,
+) -> None:
+    """Execute a cloud organize plan with Rich progress."""
+    from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+
+    from photoagent.database import CatalogDB
+    from photoagent.execute_cli import _print_result_summary
+    from photoagent.executor import PlanExecutor
+
+    moves = plan.get("moves", [])
+    total = len(moves)
+
+    with CatalogDB(base_path) as db:
+        executor = PlanExecutor(base_path, db)
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("{task.completed}/{task.total}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Organizing...", total=total)
+
+            def _on_progress(current: int, total: int, desc: str) -> None:
+                progress.update(task, completed=current, description=desc)
+
+            result = executor.execute(
+                plan, on_progress=_on_progress, copy_only=copy_only
+            )
+
+    action = "Copy" if copy_only else "Move"
+    _print_result_summary(result, action=action)
