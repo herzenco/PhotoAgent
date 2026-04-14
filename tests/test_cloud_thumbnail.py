@@ -233,3 +233,47 @@ class TestMakeThumbnail:
             f"quality=20 ({low_info['thumb_byte_size']}B) should be smaller "
             f"than quality=95 ({high_info['thumb_byte_size']}B)"
         )
+
+    def test_thumbnail_strips_exif(self, img_dir: Path) -> None:
+        """Thumbnails must NOT contain EXIF data (especially GPS)."""
+        path = img_dir / "exif_gps.jpg"
+        img = Image.new("RGB", (800, 600), color="green")
+
+        # Add EXIF with GPS coordinates
+        try:
+            import piexif
+
+            gps_ifd = {
+                piexif.GPSIFD.GPSLatitudeRef: b"N",
+                piexif.GPSIFD.GPSLatitude: ((40, 1), (26, 1), (46, 1)),
+                piexif.GPSIFD.GPSLongitudeRef: b"W",
+                piexif.GPSIFD.GPSLongitude: ((79, 1), (58, 1), (56, 1)),
+            }
+            exif_dict = {
+                "0th": {piexif.ImageIFD.Make: b"TestCamera"},
+                "GPS": gps_ifd,
+            }
+            exif_bytes = piexif.dump(exif_dict)
+            img.save(str(path), "JPEG", exif=exif_bytes, quality=90)
+        except ImportError:
+            # Fallback: add basic EXIF via Pillow
+            from PIL.ExifTags import Base as ExifBase
+
+            exif = img.getexif()
+            exif[ExifBase.Make] = "TestCamera"
+            img.save(str(path), "JPEG", exif=exif.tobytes(), quality=90)
+
+        # Generate thumbnail
+        jpeg_bytes, info = make_thumbnail(path)
+        assert jpeg_bytes is not None
+
+        # Read the thumbnail back and verify no EXIF
+        thumb_img = Image.open(io.BytesIO(jpeg_bytes))
+        exif_data = thumb_img.getexif()
+
+        # The thumbnail should have no EXIF entries at all, or at minimum
+        # no GPS data. Pillow's JPEG save without explicit exif= param
+        # should strip it, but let's verify.
+        assert len(exif_data) == 0, (
+            f"Thumbnail should have no EXIF data, but found: {dict(exif_data)}"
+        )
