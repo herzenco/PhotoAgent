@@ -22,13 +22,16 @@ from rich.progress import (
 from photoagent.database import CatalogDB
 from photoagent.scanner import FileScanner
 
-console = Console()
+import sys as _sys
+
+_console_stdout = Console()
 
 
 def run_scan(
     path: Path,
     recursive: bool = True,
     extensions: str = "jpg,jpeg,png,heic,heif,webp,gif,tiff,bmp,raw,cr2,nef,arw",
+    json_output: bool = False,
 ) -> None:
     """Run a full directory scan with a rich progress bar and summary.
 
@@ -41,14 +44,18 @@ def run_scan(
     extensions:
         Comma-separated list of file extensions to include (no dots).
     """
+    # When --json, redirect all Rich output to stderr so stdout stays clean
+    console = Console(stderr=True) if json_output else _console_stdout
+
     ext_list = [e.strip().lower() for e in extensions.split(",") if e.strip()]
 
     resolved_path = Path(path).resolve()
 
-    console.print(
-        f"[bold]Scanning[/bold] [cyan]{resolved_path}[/cyan] "
-        f"for [green]{', '.join(ext_list)}[/green] files ..."
-    )
+    if not json_output:
+        console.print(
+            f"[bold]Scanning[/bold] [cyan]{resolved_path}[/cyan] "
+            f"for [green]{', '.join(ext_list)}[/green] files ..."
+        )
 
     db = CatalogDB(resolved_path)
 
@@ -66,6 +73,7 @@ def run_scan(
             TaskProgressColumn(),
             TimeRemainingColumn(),
             console=console,
+            disable=json_output,
         )
 
         task_id = None
@@ -78,6 +86,17 @@ def run_scan(
 
         with progress:
             result = scanner.scan(db, on_progress=_on_progress)
+
+        # ---- JSON output ----
+        if json_output:
+            from photoagent.cli import _json_output
+            _json_output({
+                "total_found": result.total_found,
+                "new_images": result.new_images,
+                "skipped": result.skipped,
+                "errors": result.errors,
+                "duration": result.duration,
+            })
 
         # ---- Summary ----
         console.print()

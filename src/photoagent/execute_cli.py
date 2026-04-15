@@ -17,7 +17,8 @@ from photoagent.executor import PlanExecutor
 from photoagent.models import ExecutionResult
 from photoagent.undo import UndoManager
 
-console = Console()
+_console_stdout = Console()
+console = _console_stdout  # module-level alias for functions without json_output
 
 
 # ------------------------------------------------------------------
@@ -123,20 +124,36 @@ def run_undo(
 # ------------------------------------------------------------------
 
 
-def run_history(path: str | Path) -> list[dict[str, Any]]:
+def run_history(path: str | Path, json_output: bool = False) -> list[dict[str, Any]]:
     """Display operation history as a Rich table.
 
     Args:
         path: The base directory (root of the photo library).
+        json_output: If True, output JSON to stdout and exit.
 
     Returns:
         The list of history dicts.
     """
+    console = Console(stderr=True) if json_output else _console_stdout
+
     base_path = Path(path).resolve()
 
     with CatalogDB(base_path) as db:
         mgr = UndoManager(base_path, db)
         history = mgr.get_history()
+
+    if json_output:
+        from photoagent.cli import _json_output
+        _json_output([
+            {
+                "id": entry.get("id"),
+                "timestamp": entry.get("timestamp"),
+                "instruction": entry.get("instruction"),
+                "status": entry.get("status"),
+                "file_count": entry.get("file_count"),
+            }
+            for entry in history
+        ])
 
     if not history:
         console.print("[dim]No operations recorded yet.[/dim]")

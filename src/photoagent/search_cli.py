@@ -15,7 +15,7 @@ from rich.table import Table
 from photoagent.database import CatalogDB
 from photoagent.search import ImageSearcher
 
-console = Console()
+_console_stdout = Console()
 
 
 def run_search(
@@ -28,6 +28,7 @@ def run_search(
     type_filter: str | None = None,
     camera: str | None = None,
     person: str | None = None,
+    json_output: bool = False,
 ) -> list[dict[str, Any]]:
     """Run a search query and display results.
 
@@ -56,6 +57,8 @@ def run_search(
     -------
     List of search result dicts.
     """
+    console = Console(stderr=True) if json_output else _console_stdout
+
     db_dir = path / ".photoagent"
     if not db_dir.exists():
         console.print(
@@ -82,6 +85,27 @@ def run_search(
     with CatalogDB(path) as db:
         searcher = ImageSearcher(db, path)
         results = searcher.search(query, top_k=top_k, filters=filters)
+
+    if json_output:
+        from photoagent.cli import _json_output
+        _json_output([
+            {
+                "filename": r.get("filename"),
+                "score": r.get("score"),
+                "caption": r.get("caption"),
+                "tags": r.get("tags"),
+                "match_reason": r.get("match_reason"),
+                "date_taken": r.get("date_taken"),
+                "city": r.get("city"),
+                "country": r.get("country"),
+                "camera_model": r.get("camera_model"),
+                "ai_quality_score": r.get("ai_quality_score"),
+                "is_screenshot": r.get("is_screenshot"),
+                "face_count": r.get("face_count"),
+                "file_size": r.get("file_size"),
+            }
+            for r in results
+        ])
 
     if not results:
         console.print("[dim]No results found.[/dim]")

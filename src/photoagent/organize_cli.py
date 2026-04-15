@@ -17,7 +17,7 @@ from photoagent.database import CatalogDB
 from photoagent.planner import OrganizationPlanner, PrivacyViolationError
 from photoagent.summarizer import CatalogSummarizer
 
-console = Console()
+_console_stdout = Console()
 
 
 def run_organize(
@@ -26,6 +26,7 @@ def run_organize(
     dry_run: bool = True,
     max_preview: int = 20,
     verbose: bool = False,
+    json_output: bool = False,
 ) -> None:
     """Run the full organize workflow.
 
@@ -42,6 +43,8 @@ def run_organize(
     verbose:
         If True, log full API request/response payloads.
     """
+    console = Console(stderr=True) if json_output else _console_stdout
+
     # Validate catalog exists ------------------------------------------
     db_dir = path / ".photoagent"
     if not db_dir.exists():
@@ -90,6 +93,15 @@ def run_organize(
     except Exception as exc:
         console.print(f"[red]API error: {exc}[/red]")
         sys.exit(1)
+
+    # JSON output (dry-run only) ----------------------------------------
+    if json_output and dry_run:
+        from photoagent.cli import _json_output
+        _json_output({
+            "folder_structure": plan.get("folder_structure", []),
+            "moves": plan.get("moves", []),
+            "summary": plan.get("summary", ""),
+        })
 
     # Display plan -----------------------------------------------------
     try:

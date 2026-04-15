@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json as _json
+import sys as _sys
 from pathlib import Path
 from typing import Optional
 
@@ -10,6 +12,15 @@ from rich.console import Console
 from rich.table import Table
 
 from photoagent.database import CatalogDB
+
+
+def _json_output(data):
+    """Print data as JSON to stdout and exit via os._exit to bypass PyInstaller hooks."""
+    _sys.stdout.write(_json.dumps(data, default=str, ensure_ascii=False))
+    _sys.stdout.write("\n")
+    _sys.stdout.flush()
+    import os
+    os._exit(0)
 
 app = typer.Typer(
     name="photoagent",
@@ -44,11 +55,12 @@ def scan(
         "-e",
         help="Comma-separated list of file extensions to include",
     ),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON to stdout"),
 ) -> None:
     """Scan a directory for image files and register them in the catalog."""
     from photoagent.scan_cli import run_scan
 
-    run_scan(path=path, recursive=recursive, extensions=extensions)
+    run_scan(path=path, recursive=recursive, extensions=extensions, json_output=json_output)
 
 
 # ------------------------------------------------------------------
@@ -59,10 +71,17 @@ def scan(
 @app.command()
 def status(
     path: Path = typer.Argument(..., help="Root directory of the photo catalog"),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON to stdout"),
 ) -> None:
     """Show catalog statistics for a scanned directory."""
     db_dir = Path(path) / ".photoagent"
     if not db_dir.exists():
+        if json_output:
+            _json_output({
+                "total_images": 0, "analyzed_count": 0, "duplicate_count": 0,
+                "screenshot_count": 0, "total_disk_usage": 0,
+                "by_year": {}, "by_camera": {}, "by_location": {},
+            })
         console.print(
             f"[red]No catalog found at {path}. Run 'photoagent scan' first.[/red]"
         )
@@ -70,6 +89,9 @@ def status(
 
     with CatalogDB(Path(path)) as db:
         stats = db.get_stats()
+
+    if json_output:
+        _json_output(stats)
 
     total = stats["total_images"]
     analyzed = stats["analyzed_count"]
@@ -156,6 +178,7 @@ def organize(
     dry_run: bool = typer.Option(True, "--dry-run/--execute", help="Show plan without executing (default: dry-run)"),
     max_preview: int = typer.Option(50, "--max-preview", help="Max moves to show in preview"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Log all outbound API requests for privacy audit"),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON to stdout"),
 ) -> None:
     """Organize images according to a natural-language instruction."""
     from photoagent.organize_cli import run_organize
@@ -166,6 +189,7 @@ def organize(
         dry_run=dry_run,
         max_preview=max_preview,
         verbose=verbose,
+        json_output=json_output,
     )
 
 
@@ -180,6 +204,7 @@ def search(
     type_filter: Optional[str] = typer.Option(None, "--type", help="Filter: photo or screenshot"),
     camera: Optional[str] = typer.Option(None, "--camera", help="Filter by camera model"),
     person: Optional[str] = typer.Option(None, "--person", help="Filter by person/face cluster"),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON to stdout"),
 ) -> None:
     """Search images by natural-language query."""
     from photoagent.search_cli import run_search
@@ -188,6 +213,7 @@ def search(
         path=path, query=query, top_k=top_k,
         year=year, location=location, min_quality=min_quality,
         type_filter=type_filter, camera=camera, person=person,
+        json_output=json_output,
     )
 
 
@@ -225,6 +251,7 @@ def config(
     show: bool = typer.Option(False, "--show", help="Show current configuration"),
     device: Optional[str] = typer.Option(None, "--device", help="Set preferred device (cpu/cuda/mps)"),
     template: Optional[str] = typer.Option(None, "--template", help="Set default template"),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON to stdout"),
 ) -> None:
     """Manage PhotoAgent configuration."""
     from photoagent.config_manager import ConfigManager
@@ -242,6 +269,10 @@ def config(
     if show or (not set_api_key and not device and not template):
         cfg = mgr.get_config()
         has_key = mgr.get_api_key() is not None
+        if json_output:
+            json_cfg = dict(cfg)
+            json_cfg["api_key_configured"] = has_key
+            _json_output(json_cfg)
         console.print(f"  API key: {'[green]configured[/green]' if has_key else '[yellow]not set[/yellow]'}")
         for k, v in cfg.items():
             console.print(f"  {k}: {v}")
@@ -262,11 +293,12 @@ def undo(
 @app.command()
 def history(
     path: Path = typer.Argument(..., help="Root directory of the photo catalog"),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON to stdout"),
 ) -> None:
     """Show operation history."""
     from photoagent.execute_cli import run_history
 
-    run_history(path=path)
+    run_history(path=path, json_output=json_output)
 
 
 @app.command()
@@ -292,6 +324,7 @@ def rename_person(
 @app.command()
 def list_people(
     path: Path = typer.Argument(..., help="Root directory of the photo catalog"),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON to stdout"),
 ) -> None:
     """List all detected face clusters / people."""
     from photoagent.face_manager import FaceManager
@@ -304,6 +337,9 @@ def list_people(
     with CatalogDB(Path(path)) as db:
         mgr = FaceManager(db)
         people = mgr.list_people()
+
+    if json_output:
+        _json_output(people)
 
     if not people:
         console.print("[dim]No face clusters found. Run 'photoagent analyze' first.[/dim]")
@@ -330,12 +366,13 @@ def organize_template(
     template: str = typer.Option("by-date", "--template", "-t", help="Built-in template name"),
     yaml_file: Optional[str] = typer.Option(None, "--yaml", help="Path to custom YAML template"),
     dry_run: bool = typer.Option(True, "--dry-run/--execute", help="Show plan without executing"),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON to stdout"),
 ) -> None:
     """Organize images using a template (offline, no API needed)."""
     from photoagent.template_cli import run_template_organize
 
     yaml_path = Path(yaml_file) if yaml_file else None
-    run_template_organize(path=path, template_name=template, yaml_path=yaml_path)
+    run_template_organize(path=path, template_name=template, yaml_path=yaml_path, json_output=json_output)
 
 
 # ------------------------------------------------------------------
@@ -381,3 +418,7 @@ def cloud_organize_cmd(
     from photoagent.cloud.cli import cloud_organize
 
     cloud_organize(str(path), mapping, copy, dry_run)
+
+
+if __name__ == "__main__":
+    app()

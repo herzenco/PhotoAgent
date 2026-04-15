@@ -15,13 +15,14 @@ from rich.console import Console
 from photoagent.database import CatalogDB
 from photoagent.templates import TemplateEngine
 
-console = Console()
+_console_stdout = Console()
 
 
 def run_template_organize(
     path: Path,
     template_name: str | None = None,
     yaml_path: Path | None = None,
+    json_output: bool = False,
 ) -> None:
     """Run template-based organization.
 
@@ -35,6 +36,8 @@ def run_template_organize(
         Path to a custom YAML template file. Takes precedence
         over template_name if both are provided.
     """
+    console = Console(stderr=True) if json_output else _console_stdout
+
     db_dir = path / ".photoagent"
     if not db_dir.exists():
         console.print(
@@ -73,8 +76,20 @@ def run_template_organize(
 
     moves = plan.get("moves", [])
     if not moves:
+        if json_output:
+            from photoagent.cli import _json_output
+            _json_output({"folder_structure": [], "moves": [], "summary": "No files to organize."})
         console.print("[dim]No files to organize with this template.[/dim]")
         return
+
+    # JSON output (skip interactive approval) ---------------------------
+    if json_output:
+        from photoagent.cli import _json_output
+        _json_output({
+            "folder_structure": plan.get("folder_structure", []),
+            "moves": plan.get("moves", []),
+            "summary": plan.get("summary", ""),
+        })
 
     # Display the plan
     from photoagent.plan_display import (
